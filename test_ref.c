@@ -9,6 +9,8 @@
 enum { INS, DEL, WRDMAX = 256, STKMAX = 512, LMAX = 1024 };
 #define REF INS
 #define CPY DEL
+/*  the memory pool size */
+#define MemoryPool 10000000
 
 /* timing helper function */
 static double tvgetf(void)
@@ -43,21 +45,26 @@ int main(int argc, char **argv)
     FILE *fp = fopen(IN_FILE, "r");
     double t1, t2;
 
+    char *pptr = (char *) malloc(MemoryPool * sizeof(char));
+    char *pTop = pptr;
+
     if (!fp) { /* prompt, open, validate file for reading */
         fprintf(stderr, "error: file open failed '%s'.\n", argv[1]);
         return 1;
     }
 
     t1 = tvgetf();
-    while ((rtn = fscanf(fp, "%s", word)) != EOF) {
-        char *p = strdup(word);
-        /* FIXME: insert reference to each string */
+    /* Use memory pool top pointer to insert reference to each string */
+    while ((rtn = fscanf(fp, "%s", pTop)) != EOF) {
+        char *p = pTop;
+
         if (!tst_ins_del(&root, &p, INS, REF)) {
             fprintf(stderr, "error: memory exhausted, tst_insert.\n");
             fclose(fp);
             return 1;
         }
         idx++;
+        pTop += (strlen(pTop) + 1);/* If memory exhausted, pTop++ for next memory */
     }
     t2 = tvgetf();
 
@@ -79,18 +86,19 @@ int main(int argc, char **argv)
             char *p = NULL;
         case 'a':
             printf("enter word to add: ");
-            if (!fgets(word, sizeof word, stdin)) {
+            if (!fgets(pTop, sizeof word, stdin)) {
                 fprintf(stderr, "error: insufficient input.\n");
                 break;
             }
-            rmcrlf(word);
-            p = strdup(word);
+            rmcrlf(pTop);
+            p = pTop;
             t1 = tvgetf();
             /* FIXME: insert reference to each string */
             res = tst_ins_del(&root, &p, INS, REF);
             t2 = tvgetf();
             if (res) {
                 idx++;
+                pTop += (strlen(pTop) + 1);
                 printf("  %s - inserted in %.6f sec. (%d words in tree)\n",
                        (char *) res, t2 - t1, idx);
             } else
@@ -130,13 +138,13 @@ int main(int argc, char **argv)
             break;
         case 'd':
             printf("enter word to del: ");
-            if (!fgets(word, sizeof word, stdin)) {
+            if (!fgets(pTop, sizeof word, stdin)) {
                 fprintf(stderr, "error: insufficient input.\n");
                 break;
             }
-            rmcrlf(word);
-            p = strdup(word);
-            printf("  deleting %s\n", word);
+            rmcrlf(pTop);
+            p = pTop;
+            printf("  deleting %s\n", pTop);
             t1 = tvgetf();
             /* FIXME: remove reference to each string */
             res = tst_ins_del(&root, &p, DEL, REF);
@@ -146,10 +154,12 @@ int main(int argc, char **argv)
             else {
                 printf("  deleted %s in %.6f sec\n", word, t2 - t1);
                 idx--;
+                pTop -= (strlen(pTop) + 1);
             }
             break;
         case 'q':
             tst_free(root);
+            free(pptr);
             return 0;
             break;
         default:
